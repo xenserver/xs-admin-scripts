@@ -1,0 +1,55 @@
+#!/bin/bash
+
+function usage () {
+    echo "Usage:"
+    echo "   `basename $0` -h <xenserver host> -g <guest vm name-label>"
+    echo "   `basename $0` -h <xenserver host> -u <guest vm uuid>"
+    echo "   `basename $0` -h <xenserver host> -d <domID>"
+    exit 1
+}
+
+while getopts "h:g:u:d:" option
+do
+    case $option in
+        h ) xs=${OPTARG} ;;
+        g ) vm=${OPTARG} ;;
+        u ) uu=${OPTARG} ;;
+        d ) id=${OPTARG} ;;
+        * ) usage
+    esac
+done
+
+if [ -z ${xs} ]; then
+    usage
+fi
+
+if [ -z ${uu} ] && [ -z ${vm} ] && [ -z ${id} ]; then
+    usage
+fi
+
+if [ ! -z ${uu} ]; then
+    domid=`ssh root@${xs} xe vm-list uuid=${uu} params=dom-id --minimal`
+elif [ ! -z ${vm} ]; then
+    domid=`ssh root@${xs} xe vm-list name-label=${vm} params=dom-id --minimal`
+elif [ ! -z ${id} ]; then
+    domid=${id}
+fi
+
+if [ -z ${domid} ]; then
+    echo "Could not find guest ${vm}${uu} on host ${xs}."
+    exit 1
+elif [ ${domid} -lt 0 ]; then
+    echo "Guest ${vm}${uu} has no dom-id. Is your vm running?"
+    exit 1
+fi
+
+port=`ssh root@${xs} xenstore-read /local/domain/${domid}/console/vnc-port`
+
+if [ -z ${port} ]; then
+    echo "Couldn't read VNC port from xenstore. Is your vm running?"
+    exit 1
+fi
+
+echo "Connecting to vnc port ${port} on host ${xs}..."
+set -x
+vncviewer -via root@${xs} localhost::${port}
